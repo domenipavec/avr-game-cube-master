@@ -406,21 +406,10 @@ int main() {
 	uint8_t second_timeout = 0;
 #define MODE_ACTIVE 0
 #define COUNT_ORDER 1
-	uint8_t mode = choose(NUM_MODES - 1);
-	switch (mode) {
-	case 0:
-		display_zeros = BIT(DISPLAY_ZERO_0) | BIT(DISPLAY_ZERO_1) | BIT(DISPLAY_ZERO_2);
-		display_dots = BIT(DISPLAY_DOT_2);
-		break;
-	case 1:
-		display_zeros = BIT(DISPLAY_ZERO_0);
-		display_dots = 0;
-		break;
-	case 2:
-		display_zeros = 0;
-		display_dots = BIT(DISPLAY_DOT_0);
-		break;
-	}
+	uint8_t mode = 0;//choose(NUM_MODES - 1);
+	display_zeros = BIT(DISPLAY_ZERO_0);
+	display_dots = 0;
+
 	zeroOut();
 	displayUpdate();
 
@@ -432,6 +421,12 @@ int main() {
 		switch (ir_state) {
 			case 0: // not connected, wait
 				CLEARBIT(ir_flags, IR_CONNECTED);
+				// count number of failiures before the thingy is fixed
+				increaseWithMax();
+				displayUpdate();
+				ir_state = 15;
+				break;
+		case 15:
 				if (BITCLEAR(PIND, PD7)) {
 					ir_state = 1;
 				}
@@ -528,28 +523,8 @@ int main() {
 			ir_flags = BIT(IR_ACTED);
 
 			speaker_timeout = 150;
-
-			switch (mode) {
-			case 0:
-				delay_timeout = 200;
-				if (BITCLEAR(flags, MODE_ACTIVE)) {
-					SETBIT(flags, MODE_ACTIVE);
-					general_count = 0;
-					zeroOut();
-					displayUpdate();
-				} else {
-					CLEARBIT(flags, MODE_ACTIVE);
-					CLEARBIT(flags, COUNT_ORDER);
-				}
-				break;
-			case 1:
-				delay_timeout = 500;
-				increaseWithMax();
-				displayUpdate();
-				break;
-			case 2:
-				break;
-			}
+			zeroOut();
+			displayUpdate();
 		}
 
 		// execute every 10ms
@@ -557,32 +532,13 @@ int main() {
 			// this just about makes it a bit more accurate for timing
 			general_count = 0;
 
+
+
 			// delay another action upon detection
 			if (delay_timeout > 0) {
 				delay_timeout--;
 			}
 
-			// mode 0 counter
-			if (BITSET(flags, MODE_ACTIVE)) {
-				if (BITCLEAR(flags, COUNT_ORDER)) {
-					increaseWithMax();
-					if (digits[3] == 6) {
-						digits[3] = 0;
-						digits[2] = 1;
-						SETBIT(flags, COUNT_ORDER);
-						second_timeout = 100;
-					}
-					displayUpdate();
-				} else {
-					if (second_timeout == 0) {
-						second_timeout = 100;
-						increaseWithMax(10, 6);
-						displayUpdate();
-					}
-					second_timeout--;
-				}
-
-			}
 		}
 	}
 }
