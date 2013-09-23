@@ -425,10 +425,14 @@ int main() {
 				increaseWithMax();
 				displayUpdate();
 				ir_state = 15;
+				ir_count = 0;
 				break;
 		case 15:
 				if (BITCLEAR(PIND, PD7)) {
 					ir_state = 1;
+				}
+				if (ir_count >= 85) {
+					ir_state = 0;
 				}
 				break;
 			case 1: // wait till end of signal 0
@@ -525,6 +529,8 @@ int main() {
 			speaker_timeout = 150;
 			zeroOut();
 			displayUpdate();
+			
+			delay_timeout = 100;
 		}
 
 		// execute every 10ms
