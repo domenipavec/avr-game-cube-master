@@ -422,8 +422,10 @@ int main() {
 			case 0: // not connected, wait
 				CLEARBIT(ir_flags, IR_CONNECTED);
 				// count number of failiures before the thingy is fixed
-				increaseWithMax();
-				displayUpdate();
+				if (BITSET(ir_flags, IR_ACTED)) {
+					increaseWithMax();
+					displayUpdate();
+				}
 				ir_state = 15;
 				ir_count = 0;
 				break;
