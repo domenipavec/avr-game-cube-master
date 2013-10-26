@@ -34,7 +34,7 @@
 
 #include <avr/io.h>
 #include <avr/interrupt.h>
-//#include <avr/eeprom.h> 
+#include <avr/eeprom.h> 
 
 #include <stdint.h>
 
@@ -43,6 +43,9 @@
 #include "io.h"
 
 using namespace avr_cpp_lib;
+
+// led output pin
+OutputPin ledOut(&DDRC, &PORTC, PC2);
 
 #include "display.h"
 Display display(OutputPin(&DDRD, &PORTD, PD2), OutputPin(&DDRD, &PORTD, PD3), OutputPin(&DDRD, &PORTD, PD4));
@@ -57,17 +60,18 @@ uint8_t spi_transceive(const uint8_t send) {
 }
 
 #include "cc1101.h"
+#define CC_A (6)
+#define CC_B (5)
+
 CC1101 cc(&spi_transceive, OutputPin(&DDRB, &PORTB, PB0), InputPin(&DDRB, &PINB, PB4));
+
+InputPin gdo0(&DDRB, &PINB, PB1);
 
 static inline void ccinit() {
 	uint8_t config[3];
 
 	cc.reset();
-	
-	// calibrate!!!
-	cc.command(CC1101::SCAL);
-	_delay_ms(1);
-	
+
 	// GDO2 to high impedance
 	config[0] = 0x2E;
 	// GDO1 to high impedance
@@ -96,8 +100,12 @@ static inline void ccinit() {
 	// set manchester encoding, 2-fsk, 16/16 sync
 	cc.write(CC1101::MDMCFG2, BIT(3) | 0b010);
 	
-	// cca mode always, rx to tx, tx to rx
-	cc.write(CC1101::MCSM1, 0b00001011);
+	// cca mode always, rx to rx, tx to rx
+	cc.write(CC1101::MCSM1, 0b00001111);
+	
+	// calibrate after setting stuff
+	cc.command(CC1101::SCAL);
+	_delay_ms(1);
 }
 
 #define IR_ERROR 13
@@ -110,14 +118,11 @@ uint8_t speaker_timeout = 0;
 // function prototypes
 static void shutdown();
 
-// led output pin
-OutputPin ledOut(&DDRC, &PORTC, PC2);
-
 // timer counts
-volatile uint8_t ir_count = 0;
-volatile uint8_t ms_count = 0;
-volatile uint16_t general_count = 0;
-volatile uint16_t ms50_count = 0;
+static volatile uint8_t ir_count = 0;
+static volatile uint8_t ms_count = 0;
+static volatile uint16_t general_count = 0;
+static volatile uint16_t ms50_count = 0;
 
 // loop repeating code
 static inline void general_loop() {
@@ -198,7 +203,8 @@ static void shutdown() {
 
 DisplaySettings chooseDS(true);
 // CHOOSE ROUTINE
-static uint8_t choose(uint8_t max) {
+uint8_t choose(uint8_t max) {
+	max--;
 	display.settings(&chooseDS);
 	display.zero();
 
@@ -230,11 +236,35 @@ static uint8_t choose(uint8_t max) {
 		}
 		
 		if (button_state == 1) {
+			button_state++;
 			break;
 		}
 	}
 
 	return display.value();
+}
+
+static inline void nastavitve() {
+	for (;;) {
+		chooseDS.init = BIT(DisplaySettings::LLS_DOT);
+		display.needRefresh = true;
+		uint8_t mode = choose(NUM_MODES-1);
+		chooseDS.init = BIT(DisplaySettings::MLS_DOT);
+		display.needRefresh = true;
+		uint8_t bd = choose(2);
+		chooseDS.init = BIT(DisplaySettings::LMS_DOT);
+		display.needRefresh = true;
+		uint8_t value;
+		// bd = 0 broken time
+		// bd = 1 delay time
+		if (bd == 0) {
+			value = choose(32);
+		} else {
+			value = choose(8);
+		}
+
+		eeprom_write_byte(reinterpret_cast<uint8_t *>(mode*2+bd), value);
+	}	
 }
 
 int main() {
@@ -276,15 +306,21 @@ int main() {
 
 	// cc1101 config
 	ccinit();
-	
+	cc.command(CC1101::SRX);
+	uint8_t last_i = 5;
+
 	// mode stuff
-	mode = getMode(choose(NUM_MODES - 1));
+	uint8_t m = choose(NUM_MODES + 1);
+	if (m == NUM_MODES) {
+		nastavitve();
+	}
+	mode = getMode(m);
 	display.settings(&(mode->ds));
 	display.zero();
 
 	// ir stuff
 	uint16_t ir_delay = 0;
-	uint8_t ir_broken = 0;
+	uint8_t ir_broken = 100;
 	uint8_t ir_state = 0;
 	ir_count = 0;
 
@@ -362,6 +398,10 @@ int main() {
 			case 10: // check for signal 2 and timeout
 				if (BITCLEAR(PINB, PB7)) {
 					ir_state = 11;
+					if (m == 7 && ir_broken != 0) {
+						ir_delay = 100;
+						speaker_timeout = 150;
+					}
 					ir_broken = 0;
 				}
 				if (ir_count >= 130) {
@@ -381,28 +421,51 @@ int main() {
 				break;
 			case IR_ERROR:
 				if (ir_broken < 100) {
+					if (m == 7 && ir_delay == 0) {
+						display.set(ir_broken % 10, (ir_broken / 10) % 10, ir_broken/100, 0);
+					}
 					ir_broken++;
 				}
 				ir_count = 0;
 				ir_state = 0;
 				break;
 		}
+
+		// receive packet
+		if (gdo0.isSet()) {
+			uint8_t v = cc.read(CC1101::FIFO);
+			uint8_t i = v & 0b011;
+			if (i != last_i) {
+				last_i = i;
+				if (BITSET(v, CC_A)) {
+					speaker_timeout = 150;
+					mode->event(Mode::EVENT_SLAVE_BUTTON);
+				} else if (BITSET(v, CC_B)) {
+					speaker_timeout = 150;
+					mode->event(Mode::EVENT_SLAVE_BROKEN);
+				}
+			}
+			cc.write(CC1101::FIFO, mode->packet);
+			cc.command(CC1101::STX);
+		}
 		
 		// ir broken
-		if (ir_broken == 3 && ir_delay == 0) {
+		if (ir_broken == mode->irBroken && ir_delay == 0) {
 			ir_broken++;
 
 			speaker_timeout = 150;
 
 			ir_delay = mode->irDelay;
 
-			mode->broken();
+			mode->event(Mode::EVENT_MASTER_BROKEN);
 		}
 
 		// button pressed
 		if (button_state == 1) {
-			button_state ++;
-			mode->button();
+			button_state++;
+
+			mode->event(Mode::EVENT_MASTER_BUTTON);
+			speaker_timeout = 150;
 		}
 
 		// execute every 10ms
@@ -414,7 +477,7 @@ int main() {
 				ir_delay--;
 			}
 
-			mode->ms10();
+			mode->event(Mode::EVENT_MS10);
 		}
 	}
 }

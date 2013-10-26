@@ -38,6 +38,11 @@ class DisplaySettings {
 	bool lmsZero;
 	bool mmsZero;
 	uint32_t init;
+
+	static const uint8_t LLS_DOT = 8;
+	static const uint8_t MLS_DOT = 13;
+	static const uint8_t LMS_DOT = 18;
+	static const uint8_t MMS_DOT = 23;
 };
 
 class Display {
@@ -59,6 +64,9 @@ class Display {
 	void update();
 	// screen update, every 50 ms
 	void refresh();
+ 
+	bool frozen;
+	bool needRefresh;
 
  private:
 	// data
@@ -68,8 +76,6 @@ class Display {
 
 	uint8_t digits[4];
 	uint32_t segments;
-
-	bool needRefresh;
 
 	uint8_t bit;
 

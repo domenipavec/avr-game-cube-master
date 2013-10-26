@@ -82,7 +82,7 @@ PROJECTNAME=avr
 
 # Avrdude arguments for setting fuses
 # (I use http://www.engbedded.com/cgi-bin/fcx.cgi)
-FUSE_SETTINGS=-U lfuse:w:0xe2:m -U hfuse:w:0xd9:m -U efuse:w:0xff:m
+FUSE_SETTINGS=-U lfuse:w:0xe2:m -U hfuse:w:0xd1:m -U efuse:w:0xff:m
 
 # Source files
 # List C/C++/Assembly source files:

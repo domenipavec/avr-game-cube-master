@@ -33,21 +33,21 @@
 DisplaySettings::DisplaySettings(bool llsz, bool mlsz, bool lmsz, bool mmsz, bool llsd, bool mlsd, bool lmsd, bool mmsd)
 	: llsZero(llsz), mlsZero(mlsz), lmsZero(lmsz), mmsZero(mmsz), init(0) {
 	if (llsd) {
-		SETBIT(init, 8);
+		SETBIT(init, LLS_DOT);
 	}
 	if (mlsd) {
-		SETBIT(init, 13);
+		SETBIT(init, MLS_DOT);
 	}
 	if (lmsd) {
-		SETBIT(init, 18);
+		SETBIT(init, LMS_DOT);
 	}
 	if (mmsd) {
-		SETBIT(init, 23);
+		SETBIT(init, MMS_DOT);
 	}
 }
 
 Display::Display(avr_cpp_lib::OutputPin d, avr_cpp_lib::OutputPin c, avr_cpp_lib::OutputPin l)
-	: data(d), clock(c), latch(l), segments(0), bit(33) {
+	: frozen(false), data(d), clock(c), latch(l), segments(0), bit(33) {
 	zero();
 }
 
@@ -101,6 +101,7 @@ void Display::set(uint8_t lls, uint8_t mls, uint8_t lms, uint8_t mms) {
 	digits[1] = mls;
 	digits[2] = lms;
 	digits[3] = mms;
+	needRefresh = true;
 }
 
 void Display::turnOff() {
@@ -188,7 +189,7 @@ const uint32_t mms_masks[] PROGMEM = {
 };
 
 void Display::refresh() {
-	if (needRefresh && bit > 32) {
+	if (needRefresh && !frozen && bit > 32) {
 		segments = ds->init;
 		if (!(digits[0] == 0 && !ds->llsZero)) {
 			segments |= pgm_read_dword(&lls_masks[digits[0]]);

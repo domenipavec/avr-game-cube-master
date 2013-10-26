@@ -31,17 +31,24 @@
 
 #include "display.h"
 
-#define NUM_MODES 3
+#define NUM_MODES 8
 
-typedef void (*action)();
+typedef void (*action)(uint8_t event);
 
 class Mode {
  public:
 	DisplaySettings ds;
 	uint16_t irDelay;
-	action broken;
-	action ms10;
-	action button;
+	uint8_t packet;
+	uint8_t irBroken;
+	uint8_t laps;
+	action event;
+
+	static const uint8_t EVENT_MASTER_BROKEN = 0;
+	static const uint8_t EVENT_SLAVE_BROKEN = 1;
+	static const uint8_t EVENT_MS10 = 2;
+	static const uint8_t EVENT_MASTER_BUTTON = 3;
+	static const uint8_t EVENT_SLAVE_BUTTON = 4;
 };
 
 Mode * getMode(uint8_t i);
